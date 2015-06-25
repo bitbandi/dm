@@ -2163,7 +2163,7 @@ static void curses_print_status(void)
 
 	wattron(statuswin, A_BOLD);
 
-	cg_mvwprintw(statuswin, 0, 0, "dashminer-" PACKAGE " " VERSION " - Started: %s", datestamp);
+	cg_mvwprintw(statuswin, 0, 0, "dashminer " VERSION " - Started: %s", datestamp);
 	curses_print_uptime();
 	wattroff(statuswin, A_BOLD);
 	mvwhline(statuswin, 1, 0, '-', 80);
