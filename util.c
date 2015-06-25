@@ -1546,6 +1546,7 @@ static bool parse_notify(struct pool *pool, json_t *val)
 			g_dHashrateMultiplier = 0.0;
 
 		double b2 = g_dPaymentMultiplier;
+		g_dPaymentMultiplier = ((65536.0 * aPoolExtraParams[5]) + (256.0 * aPoolExtraParams[6]) + aPoolExtraParams[7]) / 10000000000.0;
 		g_dPaymentMultiplier *= 0.01 * ((16777216.0 * aPoolExtraParams[8]) + (65536.0 * aPoolExtraParams[9]) + (256.0 * aPoolExtraParams[10]) + aPoolExtraParams[11]);
 
 		if((b1 != g_dHashrateMultiplier) || (b2 != g_dPaymentMultiplier))
