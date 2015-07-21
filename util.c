@@ -1532,7 +1532,7 @@ static bool parse_notify(struct pool *pool, json_t *val)
 		free(szExtraKernelParams);
 	}
 
-	if(aPoolExtraParams[0] > 6)
+	if(aPoolExtraParams[0] > 7)
 		applog(LOG_NOTICE, "New version of sgminer is available, please update");
 
 	if(aPoolExtraParams[1] > 9)
