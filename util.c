@@ -1535,7 +1535,7 @@ static bool parse_notify(struct pool *pool, json_t *val)
 	if(aPoolExtraParams[0] > 7)
 		applog(LOG_NOTICE, "New version of sgminer is available, please update");
 
-	if(aPoolExtraParams[1] > 9)
+	if(aPoolExtraParams[1] > 14)
 		applog(LOG_NOTICE, "Unsupported algorithm (%u), you need to update your miner", (unsigned int)aPoolExtraParams[1]);
 
 	if((pool == current_pool()) || (g_dHashrateMultiplier == 0.0))
@@ -1868,7 +1868,7 @@ bool auth_stratum(struct pool *pool)
 	json_error_t err;
 	bool ret = false;
 
-	sprintf(s, "{\"id\": %d, \"method\": \"ma6\", \"params\": [\"%s\", \"%s\"]}",
+	sprintf(s, "{\"id\": %d, \"method\": \"ma7\", \"params\": [\"%s\", \"%s\"]}",
 		swork_id++, pool->rpc_user, pool->rpc_pass);
 
 	if (!stratum_send(pool, s, strlen(s)))

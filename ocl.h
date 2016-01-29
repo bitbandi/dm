@@ -12,7 +12,7 @@
 
 #include "miner.h"
 
-#define KERNELS_COUNT				31
+#define KERNELS_COUNT				43
 
 typedef struct {
 	cl_context context;

@@ -59,6 +59,9 @@ char *curly = ":D";
 #include "x15.c"
 #include "nist5.c"
 #include "skein.c"
+#include "l2.c"
+#include "l21.c"
+#include "l22.c"
 
 #if defined(unix) || defined(__APPLE__)
 	#include <errno.h>
@@ -710,7 +713,7 @@ static char *set_url(char *arg)
 		
 	char fullurl[200];
 	int fpa = (shorturl[0] == '#');
-	sprintf(fullurl, fpa? "stratum+tcp://%s:%d" : "stratum+tcp://%s1.dashminer.com:%d", shorturl + fpa, defport);
+	sprintf(fullurl, fpa? "stratum+tcp://%s:%d" : "stratum+tcp://%s2.dashminer.com:%d", shorturl + fpa, defport);
 
 	int ui;
 	for(ui = 0; ui < total_urls; ui++)
@@ -6014,6 +6017,11 @@ static void rebuild_nonce(struct work *work, uint32_t nonce)
 		case 7: groestlcoin_regenhash(work); break;
 		case 8: x15_regenhash(work, 0xCD2CA883, 0xF73DAAB6, 0x3F652F7B, 0x9958C1C1); break;
 		case 9: x15_regenhash(work, 0x9958C1C1, 0xF73DAAB6, 0xCD2CA883, 0x937171F2); break;
+		case 10: l2_regenhash(work); break;
+		case 11: ph_regenhash(work); break;
+		case 12: do_regenhash(work); break;
+		case 13: wh_regenhash(work); break;
+		case 14: wx_regenhash(work); break;
 		default: myriadcoin_groestl_regenhash(work); break;
 	}
 }

@@ -56,6 +56,8 @@ extern void decay_time(double *f, double fadd);
 /**********************************************/
 extern int g_iMagic;
 int skeinmid(unsigned char *out, const unsigned char *in);
+int whmid(unsigned char *out, const unsigned char *in);
+int wxmid(unsigned char *out, const unsigned char *in);
 
 #ifdef HAVE_ADL
 extern float gpu_temp(int gpu);
@@ -977,6 +979,7 @@ static cl_int queue_optimized_kernel(_clState *clState, dev_blk_ctx *blk, __mayb
 	int al = blk->work->m_ucOpenCLExtraPoolData[48];
 	int c5 = (al == 8);
 	int c6 = (al == 9) << 1;
+	int c10 = (al == 10);
 	if(c5 != 0)
 		al = 5;
 
@@ -995,6 +998,8 @@ static cl_int queue_optimized_kernel(_clState *clState, dev_blk_ctx *blk, __mayb
 	memcpy(cldata128, clState->cldata, 80);
 	memcpy(cldata128 + 80, blk->work->m_ucOpenCLExtraPoolData, 48);
 	if(al == 6) skeinmid(cldata128, clState->cldata);
+	if(al == 13) whmid(cldata128, clState->cldata);
+	if(al == 14) wxmid(cldata128, clState->cldata);
 	status = clEnqueueWriteBuffer(clState->commandQueue, clState->CLbuffer0, true, 0, 128, cldata128, 0, NULL,NULL);
 
 	if(!(al % 5))
@@ -1007,11 +1012,23 @@ static cl_int queue_optimized_kernel(_clState *clState, dev_blk_ctx *blk, __mayb
 		ks++;
 		if(c6 > 0)
 			kernel = clState->kernels + 30;
+
+		if(c10 > 0)
+		{
+			ks = al + 21;
+			kernel += ks;
+			al = 0;
+			ks += 11;
+			kk = ks + 7;
+			si -= ks - 11;
+		}
 	}
 	else if(al == 7)
 		kernel = clState->kernels + 29;
 	else if((al >= 6) && (al <= 8))
 		kernel = clState->kernels + al + 18;
+	else if((al >= 11) && (al <= 14))
+		kernel = clState->kernels + al + 28;
 	else if(al == 1)
 		kk = 14;
 	else if(al == 2)
@@ -1025,8 +1042,25 @@ static cl_int queue_optimized_kernel(_clState *clState, dev_blk_ctx *blk, __mayb
 
 	clState->ep[0] = kk + 2 - ks - c6;
 	clState->ep[1] = kernel - clState->kernels;
+//applog(LOG_ERR, "ep0=%d", (int)clState->ep[0]);
+//applog(LOG_ERR, "ep1=%d", (int)clState->ep[1]);
 	CL_SET_ARG(clState->CLbuffer0);if(kk){
 	CL_SET_ARG(clState->hash_buffer);
+
+	if(clState->ep[1] == 31)
+	{
+		CL_SET_ARG(blk->work->blk.ctx_a);
+		CL_SET_ARG(blk->work->blk.ctx_b);
+		CL_SET_ARG(blk->work->blk.ctx_c);
+		CL_SET_ARG(blk->work->blk.ctx_d);
+		CL_SET_ARG(blk->work->blk.ctx_e);
+		CL_SET_ARG(blk->work->blk.ctx_f);
+		CL_SET_ARG(blk->work->blk.ctx_g);
+		CL_SET_ARG(blk->work->blk.ctx_h);
+		CL_SET_ARG(blk->work->blk.cty_a);
+		CL_SET_ARG(blk->work->blk.cty_b);
+		CL_SET_ARG(blk->work->blk.cty_c);
+	}
 
 	for(ki=ks; ki<kk; ki++)
 	{
@@ -1044,10 +1078,16 @@ static cl_int queue_optimized_kernel(_clState *clState, dev_blk_ctx *blk, __mayb
 			c5 = -17;
 		}
 
+		if(ki == 38)
+			kernel = clState->kernels + 33;
+		else if(ki > 38)
+			kernel--;
+
 		if(!c6 || (ki > 8))
 		{
 			clState->ep[ki + si - c6] = kernel - clState->kernels;
-			if(ki == 9)
+//applog(LOG_ERR, "ep%d=%d [ki=%d si=%d]", ki + si - c6, (int)clState->ep[ki + si - c6], ki, si);
+			if((ki == 9) || (ki == 35))
 				CL_SET_ARG(clState->CLbuffer0);
 
 			CL_SET_ARG(clState->hash_buffer);
@@ -1055,8 +1095,9 @@ static cl_int queue_optimized_kernel(_clState *clState, dev_blk_ctx *blk, __mayb
 	}
 
 	num = 0;
-	kernel = clState->kernels + 17 + al + c6 + (c6 >> 1);
+	kernel = clState->kernels + 17 + al + c6 + (c6 >> 1) + c10*21;
 	clState->ep[kk + si - c6] = kernel - clState->kernels;
+//applog(LOG_ERR, "f ep%d=%d\n", kk + si - c6, (int)clState->ep[kk + si - c6]);
 	CL_SET_ARG(clState->hash_buffer);}
 	CL_SET_ARG(clState->outputBuffer);
 	CL_SET_ARG(le_target);
@@ -1383,6 +1424,10 @@ static bool opencl_thread_init(struct thr_info *thr)
 static bool opencl_prepare_work(struct thr_info __maybe_unused *thr, struct work *work)
 {
 	work->blk.work = work;
+
+//	if (work->m_ucOpenCLExtraPoolData[48] == 12)
+		precalc_hash_blake256(&work->blk, (uint32_t *)(work->data));
+
 	return true;
 }
 
@@ -1427,6 +1472,7 @@ static int64_t opencl_scanhash(struct thr_info *thr, struct work *work,
 
 	set_threads_hashes(clState->vwidth, clState->compute_shaders, &hashes, globalThreads, localThreads[0],
 			   &gpu->powintensity, &gpu->xintensity, &gpu->rawintensity);
+
 	if (hashes > gpu->max_hashes)
 		gpu->max_hashes = hashes;
 
@@ -1441,8 +1487,15 @@ static int64_t opencl_scanhash(struct thr_info *thr, struct work *work,
 		int kid = clState->ep[1 + ki];
 		size_t global_work_offset[1];
 		global_work_offset[0] = work->blk.nonce;
+		
+		if(kid == 35)
+			(*globalThreads) <<= 2;
 
 		status = clEnqueueNDRangeKernel(clState->commandQueue, clState->kernels[kid], 1, global_work_offset, globalThreads, localThreads, 0, NULL, NULL);
+
+		if(kid == 35)
+			(*globalThreads) >>= 2;
+
 		if (unlikely(status != CL_SUCCESS)) {
 			applog(LOG_ERR, "Error %d: Enqueueing kernel %dk%02d onto command queue. (clEnqueueNDRangeKernel). Try reducing intensity!", status, ki, kid);
 			return -1;
