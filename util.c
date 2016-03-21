@@ -1692,10 +1692,11 @@ static bool parse_diff(struct pool *pool, json_t *val)
 
 	if (old_diff != diff) {
 		int idiff = diff;
+
 		if ((double)idiff == diff)
-			applog(LOG_DEBUG, "%s difficulty changed to %d", pool->poolname, idiff);
+			applog(LOG_NOTICE, "%s difficulty changed to %d", pool->poolname ,idiff);
 		else
-			applog(LOG_DEBUG, "%s difficulty changed to %.3f", pool->poolname, diff);
+			applog(LOG_NOTICE, "%s difficulty changed to %.3f", pool->poolname, diff);
 	} else
 		applog(LOG_DEBUG, "%s difficulty set to %f", pool->poolname, diff);
 
@@ -1834,7 +1835,7 @@ bool parse_method(struct pool *pool, char *s)
 		return ret;
 	}
 
-	if (!strncasecmp(buf, "msd", 3) && parse_diff(pool, params)) {
+	if (!strncasecmp(buf, "mining.set_difficulty", 21) && parse_diff(pool, params)) {
 		ret = true;
 		json_decref(val);
 		return ret;
@@ -1868,7 +1869,7 @@ bool auth_stratum(struct pool *pool)
 	json_error_t err;
 	bool ret = false;
 
-	sprintf(s, "{\"id\": %d, \"method\": \"ma7\", \"params\": [\"%s\", \"%s\"]}",
+	sprintf(s, "{\"id\": %d, \"method\": \"mining.authorize\", \"params\": [\"%s\", \"%s\"]}",
 		swork_id++, pool->rpc_user, pool->rpc_pass);
 
 	if (!stratum_send(pool, s, strlen(s)))

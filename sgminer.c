@@ -693,85 +693,54 @@ bool detect_stratum(struct pool *pool, char *url)
 	return false;
 }
 
-static char *set_url(char *arg)
+static struct pool *add_url(void)
 {
-	if(strstr(arg, "://"))
-		return "ERROR: You need to specify server two character code like 'sf' or 'ny', not the full URL. See dashminer.com for more info.";
-
-	char shorturl[200];
-	if(strlen(arg) > 100)
-		return NULL;
-
-	strcpy(shorturl, arg);
-	int defport = (strcmp(shorturl, "http") == 0)? 80 : 8080;
-	char *sprt = strchr(shorturl, ':');
-	if(sprt != NULL)
-	{
-		*sprt = '\0';
-		defport = atoi(sprt + 1);
-	}
-		
-	char fullurl[200];
-	int fpa = (shorturl[0] == '#');
-	sprintf(fullurl, fpa? "stratum+tcp://%s:%d" : "stratum+tcp://%s2.dashminer.com:%d", shorturl + fpa, defport);
-
-	int ui;
-	for(ui = 0; ui < total_urls; ui++)
-	{
-		if(!strcmp(pools[ui]->rpc_url, fullurl))
-			return NULL;
-	}
-
 	total_urls++;
 	if (total_urls > total_pools)
 		add_pool();
+	return pools[total_urls - 1];
+}
 
-	char *name = arg;
-	if(!strcmp(shorturl, "sf"))
-		name = "San Francisco server";
-	else if(!strcmp(shorturl, "ny"))
-		name = "New York server";
-	else if(!strcmp(shorturl, "si"))
-		name = "Singapore server";
-	else if(!strcmp(shorturl, "am"))
-		name = "Amsterdam server";
-	else if(!strcmp(shorturl, "lo"))
-		name = "London server";
-	else if(!strcmp(shorturl, "sy"))
-		name = "Sydney server";
-	else if(!strcmp(shorturl, "to"))
-		name = "Tokyo server";
-	else if(!strcmp(shorturl, "la"))
-		name = "Los Angeles server";
-	else if(!strcmp(shorturl, "se"))
-		name = "Seattle server";
-	else if(!strcmp(shorturl, "da"))
-		name = "Dallas server";
-	else if(!strcmp(shorturl, "mi"))
-		name = "Miami server";
-	else if(!strcmp(shorturl, "at"))
-		name = "Atlanta server";
-	else if(!strcmp(shorturl, "ch"))
-		name = "Chicago server";
-	else if(!strcmp(shorturl, "fr"))
-		name = "Frankfurt server";
-	else if(!strcmp(shorturl, "pa"))
-		name = "Paris server";
-	else if(!strcmp(shorturl, "http"))
-		name = "HTTP port server";
-	else if(!strcmp(shorturl, "legacy"))
-		name = "Legacy hardware server";
+static void setup_url(struct pool *pool, char *arg)
+{
+	arg = get_proxy(arg, pool);
 
-	struct pool *pool = pools[total_urls - 1];
-	arg = get_proxy(fullurl, pool);
 	if (detect_stratum(pool, arg))
-	{
-		if(pool->poolname)
-			free(pool->poolname);
+		return;
 
-		pool->poolname = strdup(name);
+	opt_set_charp(arg, &pool->rpc_url);
+	if (strncmp(arg, "http://", 7) &&
+	    strncmp(arg, "https://", 8)) {
+		char *httpinput;
+
+		httpinput = malloc(255);
+		if (!httpinput)
+			quit(1, "Failed to malloc httpinput");
+		strcpy(httpinput, "http://");
+		strncat(httpinput, arg, 248);
+		pool->rpc_url = httpinput;
 	}
-	
+}
+
+static char *set_url(char *arg)
+{
+	struct pool *pool = add_url();
+
+	setup_url(pool, arg);
+	return NULL;
+}
+
+static char *set_poolname(char *arg)
+{
+	struct pool *pool;
+
+	while ((json_array_index + 1) > total_pools)
+		add_pool();
+	pool = pools[json_array_index];
+
+	applog(LOG_DEBUG, "Setting pool %i name to %s", pool->pool_no, arg);
+	opt_set_charp(arg, &pool->poolname);
+
 	return NULL;
 }
 
@@ -1209,10 +1178,13 @@ static struct opt_table opt_config_table[] = {
 		        "Don't submit shares if they are detected as stale"),
 	OPT_WITH_ARG("--pass|-p",
 		     set_pass, NULL, NULL,
-		     "Password for stratum server. Should be set to your email address."),
+		     "Password for bitcoin JSON-RPC server"),
 	OPT_WITHOUT_ARG("--per-device-stats",
 			opt_set_bool, &want_per_device_stats,
 			"Force verbose mode and output per-device statistics"),
+	OPT_WITH_ARG("--poolname",
+		     set_poolname, NULL, NULL,
+		     "Name of pool."),
 	OPT_WITH_ARG("--magic",
 		     set_magic, NULL, NULL,
 		     "Magic parameter, used during development. Ignore."),
@@ -1298,10 +1270,10 @@ static struct opt_table opt_config_table[] = {
 	),
 	OPT_WITH_ARG("--url|-o",
 		     set_url, NULL, NULL,
-		     "Short two character name of the dashminer.com startum server, one of these values: sf, ny, lo, si, am. See dashminer.com for more details."),
+		     "URL for bitcoin JSON-RPC server"),
 	OPT_WITH_ARG("--user|-u",
 		     set_user, NULL, NULL,
-		     "Your wallet address. You can use multiple workers in the 'wallet.worker' format."),
+		     "Username for bitcoin JSON-RPC server"),
 	OPT_WITH_ARG("--vectors",
 		     set_vector, NULL, NULL,
 		     opt_hidden),
@@ -2180,8 +2152,9 @@ static void curses_print_status(void)
 		cg_mvwprintw(statuswin, 4, 0, "Connected to multiple pools %s block change notify",
 			have_longpoll ? "with": "without");
 	} else {
-		cg_mvwprintw(statuswin, 4, 0, "%s | Diff: %s | User: %s",
+		cg_mvwprintw(statuswin, 4, 0, "Connected to %s (%s) diff %s as user %s",
 			     pool->poolname,
+			     pool->has_stratum ? "stratum" : (pool->has_gbt ? "GBT" : "longpoll"),
 			     pool->diff, pool->rpc_user);
 	}
 	wclrtoeol(statuswin);
@@ -3975,7 +3948,7 @@ static bool test_work_current(struct work *work)
 		work->work_block = ++work_block;
 		if (work->longpoll) {
 			if (work->stratum) {
-				applog(LOG_NOTICE, "%s detected new block", pool->poolname);
+				applog(LOG_NOTICE, "Stratum from %s detected new block", pool->poolname);
 			} else {
 				applog(LOG_NOTICE, "%sLONGPOLL from %s detected new block",
 				       work->gbt ? "GBT " : "", work->pool->poolname);
@@ -4013,7 +3986,7 @@ static bool test_work_current(struct work *work)
 			work->work_block = ++work_block;
 			if (shared_strategy() || work->pool == current_pool()) {
 				if (work->stratum) {
-					applog(LOG_NOTICE, "%s requested work restart", pool->poolname);
+					applog(LOG_NOTICE, "Stratum from %s requested work restart", pool->poolname);
 				} else {
 					applog(LOG_NOTICE, "%sLONGPOLL from %s requested work restart", work->gbt ? "GBT " : "", work->pool->poolname);
 				}
@@ -7889,32 +7862,6 @@ int main(int argc, char *argv[])
 
 	strcat(opt_kernel_path, "/");
 
-	int rtm = (int)(time(NULL) % 12);
-	bool cbf = (rtm / 6) != 0;
-	set_url(cbf? "ny" : "sf");
-	set_url(cbf? "sf" : "ny");
-	rtm %= 6;
-	cbf = (rtm / 3) != 0;
-	rtm %= 3;
-	if(rtm == 0)
-	{
-		set_url("lo");
-		set_url(cbf? "pa" : "am");
-		set_url(cbf? "am" : "pa");
-	}
-	else if(rtm == 1)
-	{
-		set_url("pa");
-		set_url(cbf? "lo" : "am");
-		set_url(cbf? "am" : "lo");
-	}
-	else
-	{
-		set_url("am");
-		set_url(cbf? "pa" : "lo");
-		set_url(cbf? "lo" : "pa");
-	}
-	
 	if (want_per_device_stats)
 		opt_log_output = true;
 
@@ -7999,41 +7946,13 @@ int main(int argc, char *argv[])
 		pool->sgminer_stats.getwork_wait_min.tv_sec = MIN_SEC_UNSET;
 		pool->sgminer_pool_stats.getwork_wait_min.tv_sec = MIN_SEC_UNSET;
 
-		if(!pool->rpc_userpass && (i > 0))
-		{
-			pool->rpc_userpass = strdup((*pools)->rpc_userpass);
-
-			if (!pool->rpc_user)
-				pool->rpc_user = strdup((*pools)->rpc_user);
-
-			if (!pool->rpc_pass)
-				pool->rpc_pass = strdup((*pools)->rpc_pass);
-		}
-
 		if (!pool->rpc_userpass) {
-			if (!pool->rpc_user)
-				quit(1, "Username not supplied for %s", pool->poolname);
-
-			if (!pool->rpc_pass)
-			{
-				pool->rpc_pass = malloc(4);
-				if (!pool->rpc_pass)
-					quit(1, "Failed to malloc pass");
-
-				strcpy(pool->rpc_pass, "xxx");
-				applog(LOG_WARNING, "WARNING: Please specify your email address as password. This is not required, however if email address is not provided, we cannot contact you to resolve any possible issues or notify about special rates and promotions.");
-			}
-			else if(!strchr(pool->rpc_pass, '@'))
-				applog(LOG_WARNING, "WARNING: You did not specify your email address as password. This is not required, however if email address is not provided, we cannot contact you to resolve any possible issues or notify about special rates and promotions.");
-
-			if ((pool->rpc_user[0] != '1') && (pool->rpc_user[0] != '3') && (pool->rpc_user[0] != 'X'))
-				quit(1, "Wrong username: should start with 'X' for DASH and with '1' or '3' for Bitcoin.");
-
+			if (!pool->rpc_user || !pool->rpc_pass)
+				quit(1, "No login credentials supplied for %s", pool->poolname);
 			siz = strlen(pool->rpc_user) + strlen(pool->rpc_pass) + 2;
 			pool->rpc_userpass = malloc(siz);
 			if (!pool->rpc_userpass)
 				quit(1, "Failed to malloc userpass");
-
 			snprintf(pool->rpc_userpass, siz, "%s:%s", pool->rpc_user, pool->rpc_pass);
 		}
 	}
